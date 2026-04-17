@@ -47,6 +47,12 @@ pytest = "^9.0.1"
 requests = "^2.32.3"
 tqdm = "^4.67.1"
 
+
+[[tool.poetry.source]]
+name = "mirrors"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+priority = "primary"
+
 [build-system]
 requires = ["poetry_core >= 1.8.1"]
 build-backend = "poetry.core.masonry.api"

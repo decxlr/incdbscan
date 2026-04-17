@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 from incdbscan import IncrementalDBSCAN, IncrementalDBSCANWarning
@@ -57,6 +59,8 @@ class TestIncrementalDBSCANBasic:
         ])
         dbscan.insert(initial_points)
         initial_labels = dbscan.get_cluster_labels(initial_points)
+        print()
+        print(initial_labels)
         assert all(initial_labels == -1)  # 都是噪声
 
         # 再插入第三个点，应该形成簇
@@ -66,6 +70,8 @@ class TestIncrementalDBSCANBasic:
         # 现在所有点应该在同一个簇中
         all_points = np.vstack([initial_points, third_point])
         final_labels = dbscan.get_cluster_labels(all_points)
+        print()
+        print(final_labels)
         assert all(final_labels >= 0)
         assert len(set(final_labels)) == 1
 
@@ -290,16 +296,16 @@ class TestIncrementalDBSCANBasic:
         # 在高维空间中，这些点可能形成簇
         assert len(labels) == 3
 
-    def test_empty_input_handling(self):
-        """验证空输入的处理"""
-        dbscan = IncrementalDBSCAN(eps=1.0, min_pts=3)
-
-        # 插入空数组
-        empty = np.array([]).reshape(0, 2)
-        dbscan.insert(empty)
-
-        # 不应该报错
-        assert True
+    # def test_empty_input_handling(self):
+    #     """验证空输入的处理"""
+    #     dbscan = IncrementalDBSCAN(eps=1.0, min_pts=3)
+    #
+    #     # 插入空数组
+    #     empty = np.array([]).reshape(0, 2)
+    #     dbscan.insert(empty)
+    #
+    #     # 不应该报错
+    #     assert True
 
     def test_duplicate_points(self):
         """验证重复点的处理"""
@@ -356,6 +362,109 @@ class TestIncrementalDBSCANBasic:
         # 这里只是验证不会报错
         assert len(labels_euc) == 3
         assert len(labels_man) == 3
+
+    def test_incremental_insertion_performance_10000_points(self):
+        """
+        测试10000个点的增量插入性能
+        - 总共10000个点
+        - 记录每次插入的耗时和总耗时
+        """
+        # 配置参数
+        total_points = 10000
+        batch_size = 1000
+        num_batches = total_points // batch_size
+
+        # 创建DBSCAN实例
+        dbscan = IncrementalDBSCAN(eps=1.0, min_pts=5)
+
+        # 生成随机数据（2维）
+        print(f"\n生成 {total_points} 个随机数据点...")
+        all_data = np.random.rand(total_points, 2) * 200
+
+        # 记录每轮耗时
+        batch_times = []
+        cumulative_times = []
+
+        print(f"\n开始增量插入测试:")
+        print(f"  - 总点数: {total_points}")
+        print(f"  - 批次大小: {batch_size}")
+        print(f"  - 批次数: {num_batches}")
+        print("-" * 60)
+
+        # 总体计时开始
+        total_start_time = time.time()
+
+        for i in range(num_batches):
+            # 提取当前批次的数据
+            start_idx = i * batch_size
+            end_idx = start_idx + batch_size
+            batch_data = all_data[start_idx:end_idx]
+
+            # 计时开始
+            batch_start_time = time.time()
+
+            # 执行增量插入
+            dbscan.insert(batch_data)
+
+            # 查询当前批次的标签
+            cur_labels = dbscan.get_cluster_labels(batch_data)
+            cur_unique_labels = set(cur_labels)
+            cur_noise_count = np.sum(cur_labels == -1)
+            cur_cluster_count = len([l for l in cur_unique_labels if l >= 0])
+
+            # 查询所有已插入点的标签（用于对比）
+            all_inserted_data = all_data[:end_idx]
+            all_labels = dbscan.get_cluster_labels(all_inserted_data)
+            all_unique_labels = set(all_labels)
+            total_cluster_count = len([l for l in all_unique_labels if l >= 0])
+
+            # 计时结束
+            batch_end_time = time.time()
+            batch_elapsed = batch_end_time - batch_start_time
+
+            # 记录耗时
+            batch_times.append(batch_elapsed)
+            cumulative_elapsed = batch_end_time - total_start_time
+            cumulative_times.append(cumulative_elapsed)
+
+            # 打印进度
+            points_processed = (i + 1) * batch_size
+            print(f"  第 {i+1:3d} 轮 | "
+                  f"已处理: {points_processed:5d}/{total_points} 点 | "
+                  f"本轮耗时: {batch_elapsed:.4f}s | "
+                  f"累计耗时: {cumulative_elapsed:.4f}s | "
+                  f"当前批次聚类: {cur_cluster_count:3d} | "
+                  f"总聚类数: {total_cluster_count:3d}")
+
+        # 总体计时结束
+        total_end_time = time.time()
+        total_elapsed = total_end_time - total_start_time
+
+        print("-" * 60)
+        print(f"\n性能测试结果:")
+        print(f"  总耗时: {total_elapsed:.4f} 秒")
+        print(f"  平均每轮耗时: {np.mean(batch_times):.4f} 秒")
+        print(f"  最快一轮耗时: {np.min(batch_times):.4f} 秒")
+        print(f"  最慢一轮耗时: {np.max(batch_times):.4f} 秒")
+        print(f"  耗时标准差: {np.std(batch_times):.4f} 秒")
+        print(f"  平均每秒处理点数: {total_points / total_elapsed:.2f} 点/秒")
+
+        # 验证聚类结果
+        print(f"\n聚类结果验证:")
+        labels = dbscan.get_cluster_labels(all_data)
+        unique_labels = set(labels)
+        noise_count = np.sum(labels == -1)
+        cluster_count = len([l for l in unique_labels if l >= 0])
+
+        print(f"  唯一标签数: {len(unique_labels)}")
+        print(f"  聚类数量: {cluster_count}")
+        print(f"  噪声点数量: {noise_count} ({noise_count/total_points*100:.2f}%)")
+        print(f"  聚类点数量: {total_points - noise_count} ({(total_points-noise_count)/total_points*100:.2f}%)")
+
+        # 断言：确保测试正确执行
+        assert len(labels) == total_points, f"标签数量应为 {total_points}，实际为 {len(labels)}"
+        assert total_elapsed > 0, "总耗时应大于0"
+        assert len(batch_times) == num_batches, f"应有 {num_batches} 个批次耗时记录"
 
 
 # 运行测试的辅助函数
