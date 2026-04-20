@@ -11,25 +11,32 @@ class Deleter:
         self.objects = objects
 
     def delete(self, object_to_delete):
+        # 步骤1：删除对象并更新邻域关系
         self.objects.delete_object(object_to_delete)
         object_deleted = object_to_delete
 
+        # 步骤2：找出失去核心属性的对象（Ex-Cores）
         ex_cores = self._get_objects_that_lost_core_property(object_deleted)
 
+        # 步骤3：获取更新种子和非核心邻居
         update_seeds, non_core_neighbors_of_ex_cores = \
             self._get_update_seeds_and_non_core_neighbors_of_ex_cores(
                 ex_cores, object_deleted)
 
+        # 步骤4：处理可能的簇分裂
         if update_seeds:
             # Only for update seeds belonging to the same cluster do we
             # have to consider if split is needed.
 
+            # 按簇分组更新种子
             update_seeds_by_cluster = \
                 self._group_objects_by_cluster(update_seeds)
 
             for seeds in update_seeds_by_cluster.values():
+                # 查找需要分裂出去的连通分量
                 components = self._find_components_to_split_away(seeds)
                 for component in components:
+                    # 分配新标签
                     self.objects.set_labels(
                         component, self.objects.get_next_cluster_label())
 
@@ -37,6 +44,7 @@ class Deleter:
         # of objects that lost their core property is always needed. They
         # become either borders of other clusters or noise.
 
+        # 步骤5：更新边界对象的标签
         self._set_each_border_object_labels_to_largest_around(
             non_core_neighbors_of_ex_cores)
 

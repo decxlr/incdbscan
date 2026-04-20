@@ -11,15 +11,19 @@ class Inserter:
         self.objects = objects
 
     def insert(self, object_value):
+        # 1.插入对象并建立邻域关系
         object_inserted = self.objects.insert_object(object_value)
 
+        # 2.分离核心邻居（新核心 vs 旧核心）
         new_core_neighbors, old_core_neighbors = \
             self._separate_core_neighbors_by_novelty(object_inserted)
 
+        # 3.处理无新核心的情况
         if not new_core_neighbors:
             # If there is no new core object, only the new object has to be
             # put in a cluster.
 
+            # 吸收情况：新对象加入已有核心邻居的最大标签簇
             if old_core_neighbors:
                 # If there are already core objects near to the new object,
                 # the new object is put in the most recent cluster. This is
@@ -34,16 +38,21 @@ class Inserter:
                 # If the new object does not have any core neighbors,
                 # it becomes a noise. Called case "Noise" in the paper.
 
+                # 噪声情况：无核心邻居，标记为噪声
                 label_of_new_object = CLUSTER_LABEL_NOISE
 
             self.objects.set_label(object_inserted, label_of_new_object)
             return
 
+        # 4.有新核心产生，获取更新种子
+        # 更新种子就是"需要检查是否要合并或创建簇的那些核心对象"，它们是标签更新的起点和范围限定
         update_seeds = self._get_update_seeds(new_core_neighbors)
 
+        # 5.查找连通分量
         connected_components_in_update_seeds = \
             self.objects.get_connected_components_within_objects(update_seeds)
 
+        # 6.处理每个连通分量
         for component in connected_components_in_update_seeds:
             effective_cluster_labels = \
                 self._get_effective_cluster_labels_of_objects(component)
@@ -53,6 +62,7 @@ class Inserter:
                 # previously unclassified and noise objects, a new cluster is
                 # created. Corresponds to case "Creation" in the paper.
 
+                # 创建情况：全是未分类/噪声对象，创建新簇
                 next_cluster_label = self.objects.get_next_cluster_label()
                 self.objects.set_labels(component, next_cluster_label)
 
@@ -62,6 +72,7 @@ class Inserter:
                 # will be merged into the most recent cluster.
                 # Corresponds to cases "Absorption" and "Merge" in the paper.
 
+                # 合并情况：合并到最大标签的簇
                 max_label = max(effective_cluster_labels)
                 self.objects.set_labels(component, max_label)
 
@@ -72,6 +83,7 @@ class Inserter:
         # its new core neighbor, thereby affecting border and noise objects,
         # and the object being inserted.
 
+        # 7.更新新核心邻居周围所有对象的标签
         self._set_cluster_label_around_new_core_neighbors(new_core_neighbors)
 
     def _separate_core_neighbors_by_novelty(self, object_inserted):

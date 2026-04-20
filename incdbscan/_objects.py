@@ -48,6 +48,7 @@ class Objects(LabelHandler):
     def insert_object(self, value):
         object_id = hash_(value)
 
+        # 情况1: 重复点
         if object_id in self._object_id_to_node_id:
             obj = self._get_object_from_object_id(object_id)
             obj.count += 1
@@ -55,11 +56,16 @@ class Objects(LabelHandler):
                 neighbor.neighbor_count += 1
             return obj
 
+        # 情况2: 新点
         new_object = Object(object_id, self.min_pts)
 
+        # 1. 加入图
         self._insert_graph_metadata(new_object)
+        # 2. 设置初始标签
         self.set_label_of_inserted_object(new_object)
+        # 3. 加入空间索引
         self.neighbor_searcher.insert(value, object_id)
+        # 4. 更新邻居关系
         self._update_neighbors_during_insertion(new_object, value)
         return new_object
 
@@ -70,11 +76,16 @@ class Objects(LabelHandler):
         self._object_id_to_node_id[object_id] = node_id
 
     def _update_neighbors_during_insertion(self, object_inserted, new_value):
+        # 1. 查询新点的ε邻居:返回所有与新点距离 ≤ eps 的已有对象ID
         neighbors = self._get_neighbors(new_value)
+        # 2. 遍历每个邻居 obj:
         for obj in neighbors:
+            # 新点成为obj的邻居
             obj.neighbor_count += 1
+            # 不是自己
             if obj.id != object_inserted.id:
                 object_inserted.neighbor_count += obj.count
+                # 双向加入邻居集合
                 obj.neighbors.add(object_inserted)
                 object_inserted.neighbors.add(obj)
                 self.graph.add_edge(object_inserted.node_id, obj.node_id, None)
